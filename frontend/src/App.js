@@ -425,7 +425,8 @@ function App() {
                       <th>Dirección</th>
                       <th>Teléfono</th>
                       <th>Email</th>
-                      <th>Tiene Web</th>
+                      <th>Google Maps</th>
+                      <th>Sitio Web</th>
                       <th>Estado Web</th>
                       <th>Redes</th>
                       <th>Calificación</th>
@@ -443,9 +444,30 @@ function App() {
                         <td className="phone">{business.telefono || '-'}</td>
                         <td className="email">{business.email || '-'}</td>
                         <td>
-                          <span className={`badge ${business.web ? 'badge-yes' : 'badge-no'}`}>
-                            {business.web ? 'Sí' : 'No'}
-                          </span>
+                          {business.url ? (
+                            <a
+                              href={business.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: '#1a73e8', textDecoration: 'none', fontWeight: '500' }}
+                            >
+                              📍 Ver en Maps
+                            </a>
+                          ) : '-'}
+                        </td>
+                        <td>
+                          {business.web ? (
+                            <a
+                              href={business.web.startsWith('http') ? business.web : `https://${business.web}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: '#28a745', textDecoration: 'none', fontWeight: '500' }}
+                            >
+                              🌐 Ver Sitio
+                            </a>
+                          ) : (
+                            <span className="badge badge-no">Sin Web</span>
+                          )}
                         </td>
                         <td>{business.estadoWeb || '-'}</td>
                         <td>
