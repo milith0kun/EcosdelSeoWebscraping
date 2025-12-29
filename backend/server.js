@@ -29,10 +29,30 @@ app.use('/api/scheduler', schedulerRoutes);
 
 // Ruta de prueba
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
     message: 'Servidor de Ecos del SEO funcionando correctamente',
     timestamp: new Date().toISOString()
+  });
+});
+
+// Middleware de manejo de errores global (debe estar al final, después de todas las rutas)
+app.use((err, req, res, next) => {
+  console.error('❌ Error capturado por middleware global:', err);
+
+  // Asegurar que siempre devolvemos JSON
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Error interno del servidor',
+    error: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+});
+
+// Middleware para rutas no encontradas (404)
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Ruta no encontrada'
   });
 });
 

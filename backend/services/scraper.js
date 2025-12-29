@@ -8,14 +8,45 @@ class GoogleMapsScraper {
   }
 
   async initialize() {
-    this.browser = await puppeteer.launch({
-      headless: 'new',
-      executablePath: '/usr/bin/chromium-browser',
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
-    });
-    this.page = await this.browser.newPage();
-    await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    await this.page.setViewport({ width: 1920, height: 1080 });
+    try {
+      // Detectar sistema operativo y configurar Puppeteer correctamente
+      const isWindows = process.platform === 'win32';
+      const isLinux = process.platform === 'linux';
+
+      const launchOptions = {
+        headless: 'new',
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-blink-features=AutomationControlled',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu'
+        ]
+      };
+
+      // Solo especificar executablePath en Linux (en Windows usa el bundled Chromium)
+      if (isLinux) {
+        launchOptions.executablePath = '/usr/bin/chromium-browser';
+      }
+
+      console.log(`🖥️  Sistema operativo detectado: ${process.platform}`);
+      console.log(`🌐 Iniciando navegador con opciones:`, JSON.stringify(launchOptions, null, 2));
+
+      this.browser = await puppeteer.launch(launchOptions);
+      console.log('✅ Navegador iniciado correctamente');
+
+      this.page = await this.browser.newPage();
+      await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+      await this.page.setViewport({ width: 1920, height: 1080 });
+
+      console.log('✅ Página configurada correctamente');
+    } catch (error) {
+      console.error('❌ Error al inicializar navegador:', error);
+      throw new Error(`No se pudo inicializar el navegador: ${error.message}. Asegúrate de que Chrome/Chromium esté instalado.`);
+    }
   }
 
   async searchBusinesses(ciudad, progressCallback = null) {
@@ -24,130 +55,34 @@ class GoogleMapsScraper {
 
       this.progressCallback = progressCallback;
 
-      // ESTRATEGIA COMPLETA: Lista exhaustiva de categorías para cobertura total de negocios
+      // ESTRATEGIA OPTIMIZADA: Búsqueda por radio desde el centro de la ciudad
+      // En lugar de 213 categorías, usamos búsqueda genérica "negocios" en un radio
+      const radioKm = 5; // Radio de búsqueda en kilómetros desde el centro
+
+      // Categorías principales (reducidas para eficiencia)
       const categorias = [
-        // Alimentos y bebidas (todas las subcategorías)
-        'restaurantes', 'cafeterías', 'bares', 'heladerías', 'panaderías', 'pastelerías',
-        'comida rápida', 'pizzerías', 'cevicherías', 'chifas', 'pollerías', 'parrillas',
-        'juguerías', 'chicherías', 'fuentes de soda', 'dulcerías', 'chocolaterías',
-
-        // Alojamiento y turismo
-        'hoteles', 'hostales', 'hospedajes', 'casas de huéspedes', 'albergues',
-        'agencias de viajes', 'tours', 'operadores turísticos', 'guías turísticos',
-
-        // Retail y comercios
-        'tiendas', 'boutiques', 'bazares', 'minimarkets', 'bodegas',
-        'farmacias', 'boticas', 'supermercados', 'hipermercados',
-        'ferreterías', 'librerías', 'papelerías', 'jugueterías',
-        'tiendas de ropa', 'tiendas de calzado', 'zapaterías', 'tiendas de deportes',
-        'joyerías', 'relojerías', 'ópticas', 'perfumerías', 'cosméticos',
-        'pet shops', 'veterinarias', 'tiendas de mascotas',
-        'florerías', 'viveros', 'tiendas de plantas',
-        'tiendas de electrodomésticos', 'tiendas de electrónica', 'tiendas de música',
-
-        // Servicios profesionales
-        'abogados', 'estudios jurídicos', 'notarías',
-        'contadores', 'estudios contables', 'asesoría tributaria',
-        'consultorías', 'asesorías empresariales',
-        'arquitectos', 'ingenieros', 'estudios de arquitectura',
-        'inmobiliarias', 'corredores de bienes raíces',
-
-        // Salud y bienestar
-        'clínicas', 'centros médicos', 'consultorios médicos',
-        'dentistas', 'odontólogos', 'ortodoncistas',
-        'laboratorios clínicos', 'laboratorios de análisis',
-        'ópticas', 'oftalmólogos',
-        'fisioterapia', 'terapia física', 'rehabilitación',
-        'psicólogos', 'psiquiatras',
-        'nutricionistas', 'dietistas',
-        'gimnasios', 'centros de fitness', 'crossfit',
-        'spas', 'centros de masajes', 'centros de estética',
-        'salones de belleza', 'peluquerías', 'barberías',
-        'manicure', 'pedicure', 'estética',
-
-        // Educación
-        'colegios', 'escuelas', 'institutos educativos',
-        'universidades', 'centros de educación superior',
-        'academias', 'centros de capacitación',
-        'centros de idiomas', 'institutos de inglés',
-        'guarderías', 'nidos', 'centros de cuidado infantil',
-        'academias de música', 'academias de danza', 'academias de arte',
-
-        // Automotriz
-        'talleres mecánicos', 'mecánica automotriz', 'mecánica en general',
-        'lavaderos de autos', 'car wash',
-        'repuestos automotrices', 'autopartes',
-        'lubricentros', 'cambio de aceite',
-        'llantas', 'venta de neumáticos',
-        'talleres de pintura automotriz', 'enderezado y pintura',
-        'talleres de electricidad automotriz',
-
-        // Construcción y hogar
-        'constructoras', 'empresas constructoras',
-        'maestros de obra', 'albañilería',
-        'cerrajería', 'cerrajeros',
-        'carpintería', 'ebanistería',
-        'electricistas', 'instalaciones eléctricas',
-        'gasfiteros', 'plomería', 'sanitarios',
-        'pintores', 'pintura en general',
-        'vidriería', 'cristalería',
-        'mueblería', 'tiendas de muebles',
-        'decoración', 'diseño de interiores',
-
-        // Tecnología
-        'servicio técnico', 'reparación de computadoras',
-        'reparación de celulares', 'reparación de smartphones',
-        'tiendas de computadoras', 'tiendas de laptops',
-        'internet café', 'cabinas de internet',
-        'impresoras', 'servicio de impresión',
-
-        // Entretenimiento y recreación
-        'cines', 'teatros',
-        'discotecas', 'clubs nocturnos',
-        'karaokes', 'peñas',
-        'centros recreacionales', 'parques de diversiones',
-        'salas de juegos', 'casinos', 'tragamonedas',
-
-        // Servicios financieros
-        'bancos', 'agencias bancarias',
-        'cajas municipales', 'cajas rurales',
-        'cooperativas', 'cooperativas de ahorro',
-        'casas de cambio', 'cambistas',
-        'financieras', 'créditos',
-
-        // Transporte y logística
-        'transporte', 'empresas de transporte',
-        'courier', 'mensajería',
-        'mudanzas', 'servicios de mudanza',
-        'taxi', 'servicios de taxi',
-        'agencias de carga', 'logística',
-
-        // Otros servicios importantes
-        'lavanderías', 'lavado en seco',
-        'tintorerías', 'tintorería y lavandería',
-        'imprentas', 'copias e impresiones',
-        'fotografía', 'estudios fotográficos',
-        'eventos', 'organización de eventos',
-        'catering', 'banquetes',
-        'funerarias', 'servicios funerarios',
-        'seguros', 'corredores de seguros',
-
-        // Búsquedas genéricas amplias para capturar todo lo demás
-        'negocios', 'empresas', 'comercios', 'locales comerciales',
-        'servicios profesionales', 'oficinas', 'emprendimientos'
+        'restaurantes', 'cafeterías', 'bares', 'hoteles', 'tiendas',
+        'peluquerías', 'gimnasios', 'farmacias', 'talleres mecánicos',
+        'abogados', 'dentistas', 'clínicas', 'agencias de viajes',
+        'inmobiliarias', 'construcción', 'servicio técnico', 'fotografía',
+        'lavanderías', 'spas', 'academias', 'veterinarias', 'panaderías',
+        'ferreterías', 'ópticas', 'librerías', 'joyerías', 'florerías',
+        'negocios', 'empresas', 'comercios' // Búsquedas amplias
       ];
 
       let allBusinesses = [];
       const businessesSet = new Set(); // Para evitar duplicados
 
       console.log(`📋 Total de categorías a buscar: ${categorias.length}`);
-      console.log(`🎯 Iniciando búsqueda comprehensiva de TODOS los tipos de negocios en ${ciudad}...\n`);
+      console.log(`📍 Radio de búsqueda: ${radioKm} km desde el centro de ${ciudad}`);
+      console.log(`🎯 Iniciando búsqueda optimizada de negocios en ${ciudad}...\n`);
 
       for (let i = 0; i < categorias.length; i++) {
         const categoria = categorias[i];
         console.log(`🔍 Buscando categoría: ${categoria} (${i + 1}/${categorias.length})`);
 
-        const searchUrl = `https://www.google.com/maps/search/${categoria}+${encodeURIComponent(ciudad)}+Peru`;
+        // Búsqueda con "near" para enfocarse en el centro de la ciudad
+        const searchUrl = `https://www.google.com/maps/search/${categoria}+near+${encodeURIComponent(ciudad)}+Peru`;
         console.log('📍 URL:', searchUrl);
 
         if (this.progressCallback) {
@@ -172,8 +107,23 @@ class GoogleMapsScraper {
         // Extraer negocios de esta categoría
         const categoryBusinesses = await this.extractBusinessListData();
 
+        console.log(`📊 Encontrados ${categoryBusinesses.length} negocios en ${categoria}`);
+
+        // ENRIQUECER INMEDIATAMENTE con detalles (teléfono, email, redes)
+        console.log(`🔍 Obteniendo detalles de ${categoryBusinesses.length} negocios...`);
+        const enrichedCategoryBusinesses = await this.enrichBusinessesWithDetails(categoryBusinesses);
+
+        // FILTRAR: Solo los que tienen contacto (teléfono O email)
+        const contactableCategoryBusinesses = enrichedCategoryBusinesses.filter(business => {
+          const tieneTelefono = business.telefono && business.telefono.length >= 9;
+          const tieneEmail = business.email && business.email.includes('@');
+          return tieneTelefono || tieneEmail;
+        });
+
+        console.log(`✅ ${contactableCategoryBusinesses.length} negocios contactables en ${categoria}`);
+
         // Agregar solo los que no sean duplicados (basado en nombre + dirección)
-        for (const business of categoryBusinesses) {
+        for (const business of contactableCategoryBusinesses) {
           const key = `${business.nombre}-${business.direccion}`;
           if (!businessesSet.has(key)) {
             businessesSet.add(key);
@@ -181,51 +131,60 @@ class GoogleMapsScraper {
           }
         }
 
-        console.log(`✅ Categoría ${categoria}: ${categoryBusinesses.length} negocios (Total único: ${allBusinesses.length})`);
+        console.log(`📊 Total acumulado: ${allBusinesses.length} negocios únicos contactables\n`);
+
+        // Guardar progreso cada 3 categorías
+        if ((i + 1) % 3 === 0 && this.progressCallback) {
+          await this.progressCallback(
+            Math.floor(((i + 1) / categorias.length) * 90),
+            `Procesadas ${i + 1}/${categorias.length} categorías`,
+            allBusinesses.length,
+            allBusinesses
+          );
+        }
       }
 
       if (this.progressCallback) {
-        await this.progressCallback(20, `Encontrados ${allBusinesses.length} negocios únicos. Obteniendo detalles...`, allBusinesses.length, allBusinesses);
+        await this.progressCallback(95, `Finalizando búsqueda con ${allBusinesses.length} negocios contactables...`, allBusinesses.length, allBusinesses);
       }
 
-      // Ahora obtener detalles de todos los negocios únicos encontrados
-      const enrichedBusinesses = await this.enrichBusinessesWithDetails(allBusinesses);
-
-      console.log(`✅ Total final: ${enrichedBusinesses.length} negocios con detalles completos`);
+      // Ya están enriquecidos y filtrados, solo aplicar filtros adicionales
+      console.log(`\n🔍 Aplicando filtros finales...`);
 
       // FILTRAR negocios internacionales y cadenas grandes
-      const localBusinesses = enrichedBusinesses.filter(business => {
+      const localBusinesses = allBusinesses.filter(business => {
         return this.isLocalBusiness(business);
       });
 
-      console.log(`🎯 Filtrados: ${enrichedBusinesses.length - localBusinesses.length} negocios internacionales/cadenas`);
+      console.log(`🎯 Filtrados: ${allBusinesses.length - localBusinesses.length} negocios internacionales/cadenas`);
 
-      // FILTRO DE CALIDAD: Solo negocios con datos ÚTILES y COMPLETOS
-      const qualityBusinesses = localBusinesses.filter(business => {
+      // FILTRO DE CALIDAD: Verificar datos mínimos
+      const contactableBusinesses = localBusinesses.filter(business => {
         return this.hasMinimumRequiredData(business);
       });
 
-      console.log(`🎯 Filtrados por datos incompletos: ${localBusinesses.length - qualityBusinesses.length} negocios (sin nombre o dirección)`);
-      console.log(`✅ Total final: ${qualityBusinesses.length} negocios capturados (incluyendo algunos sin teléfono/email)`);
+      console.log(`🎯 Filtrados por datos incompletos: ${localBusinesses.length - contactableBusinesses.length} negocios`);
+      console.log(`✅ TOTAL FINAL: ${contactableBusinesses.length} negocios contactables (con teléfono O email)`);
 
-      // Estadísticas de datos capturados
-      const conTelefono = qualityBusinesses.filter(b => b.telefono).length;
-      const conEmail = qualityBusinesses.filter(b => b.email).length;
-      const conNombreContacto = qualityBusinesses.filter(b => b.nombreContacto).length;
-      const conRedes = qualityBusinesses.filter(b => b.facebook || b.instagram).length;
-      const conWeb = qualityBusinesses.filter(b => b.web).length;
-      const conDireccion = qualityBusinesses.filter(b => b.direccion && b.direccion.length > 5).length;
+      // Estadísticas de datos capturados (de los negocios con contacto)
+      const conTelefono = contactableBusinesses.filter(b => b.telefono).length;
+      const conEmail = contactableBusinesses.filter(b => b.email).length;
+      const conAmbos = contactableBusinesses.filter(b => b.telefono && b.email).length;
+      const conNombreContacto = contactableBusinesses.filter(b => b.nombreContacto).length;
+      const conRedes = contactableBusinesses.filter(b => b.facebook || b.instagram).length;
+      const conWeb = contactableBusinesses.filter(b => b.web).length;
+      const conDireccion = contactableBusinesses.filter(b => b.direccion && b.direccion.length > 5).length;
 
-      console.log(`\n📊 ESTADÍSTICAS DE CAPTURA:`);
-      console.log(`   📞 Teléfonos: ${conTelefono}/${qualityBusinesses.length} (${Math.round(conTelefono/qualityBusinesses.length*100)}%)`);
-      console.log(`   📍 Direcciones: ${conDireccion}/${qualityBusinesses.length} (${Math.round(conDireccion/qualityBusinesses.length*100)}%) ✅ REQUERIDO`);
-      console.log(`   👤 Nombres de contacto: ${conNombreContacto}/${qualityBusinesses.length} (${Math.round(conNombreContacto/qualityBusinesses.length*100)}%)`);
-      console.log(`   📧 Emails: ${conEmail}/${qualityBusinesses.length} (${Math.round(conEmail/qualityBusinesses.length*100)}%)`);
-      console.log(`   🌐 Sitios web: ${conWeb}/${qualityBusinesses.length} (${Math.round(conWeb/qualityBusinesses.length*100)}%)`);
-      console.log(`   📱 Redes sociales: ${conRedes}/${qualityBusinesses.length} (${Math.round(conRedes/qualityBusinesses.length*100)}%)`);
-      console.log(`   ℹ️  NOTA: ${qualityBusinesses.length - conTelefono - conEmail} negocios sin contacto directo (teléfono/email)\n`);
+      console.log(`\n📊 ESTADÍSTICAS DE CAPTURA (solo negocios contactables):`);
+      console.log(`   📞 Teléfonos: ${conTelefono}/${contactableBusinesses.length} (${Math.round(conTelefono / contactableBusinesses.length * 100)}%)`);
+      console.log(`   📧 Emails: ${conEmail}/${contactableBusinesses.length} (${Math.round(conEmail / contactableBusinesses.length * 100)}%)`);
+      console.log(`   📞📧 Ambos (teléfono + email): ${conAmbos}/${contactableBusinesses.length} (${Math.round(conAmbos / contactableBusinesses.length * 100)}%)`);
+      console.log(`   📍 Direcciones: ${conDireccion}/${contactableBusinesses.length} (${Math.round(conDireccion / contactableBusinesses.length * 100)}%) ✅ REQUERIDO`);
+      console.log(`   👤 Nombres de contacto: ${conNombreContacto}/${contactableBusinesses.length} (${Math.round(conNombreContacto / contactableBusinesses.length * 100)}%)`);
+      console.log(`   🌐 Sitios web: ${conWeb}/${contactableBusinesses.length} (${Math.round(conWeb / contactableBusinesses.length * 100)}%)`);
+      console.log(`   📱 Redes sociales: ${conRedes}/${contactableBusinesses.length} (${Math.round(conRedes / contactableBusinesses.length * 100)}%)\n`);
 
-      return qualityBusinesses;
+      return contactableBusinesses;
     } catch (error) {
       console.error('❌ Error en searchBusinesses:', error);
       throw error;
@@ -351,8 +310,8 @@ class GoogleMapsScraper {
               // Método 2: Buscar en divs con fuente grande
               if (!data.nombre) {
                 const nameDiv = article.querySelector('div[class*="fontHeadline"]') ||
-                               article.querySelector('div[class*="title"]') ||
-                               article.querySelector('[class*="fontBodyLarge"]');
+                  article.querySelector('div[class*="title"]') ||
+                  article.querySelector('[class*="fontBodyLarge"]');
                 if (nameDiv) {
                   data.nombre = nameDiv.textContent.trim();
                 }
@@ -384,7 +343,7 @@ class GoogleMapsScraper {
 
               // Buscar cantidad de reseñas
               const reviewMatch = ariaLabel.match(/(\d+)\s*(reseñas?|opiniones?|reviews?)/i) ||
-                                 ariaLabel.match(/\((\d+)\)/);
+                ariaLabel.match(/\((\d+)\)/);
               if (reviewMatch) {
                 data.resenas = parseInt(reviewMatch[1]);
               }
@@ -414,12 +373,12 @@ class GoogleMapsScraper {
               const text = span.textContent.trim();
               // Filtrar: no números, no muy corto, no muy largo, no contiene símbolos de precio
               if (text.length > 3 &&
-                  text.length < 50 &&
-                  !text.match(/^\d+[.,]?\d*$/) &&
-                  !text.includes('$') &&
-                  !text.includes('S/') &&
-                  !text.match(/\d+\s*(estrellas|stars|reseñas|reviews)/i) &&
-                  text !== data.nombre) {
+                text.length < 50 &&
+                !text.match(/^\d+[.,]?\d*$/) &&
+                !text.includes('$') &&
+                !text.includes('S/') &&
+                !text.match(/\d+\s*(estrellas|stars|reseñas|reviews)/i) &&
+                text !== data.nombre) {
                 data.categoria = text;
                 break;
               }
@@ -443,7 +402,7 @@ class GoogleMapsScraper {
               for (const div of divs) {
                 const text = div.textContent.trim();
                 if (text.length > 15 && text.length < 200 &&
-                    (text.includes(',') || text.match(/\d{5}/))) {
+                  (text.includes(',') || text.match(/\d{5}/))) {
                   data.direccion = text;
                   break;
                 }
@@ -501,7 +460,8 @@ class GoogleMapsScraper {
           const details = await this.getBusinessDetailsComplete(business.url);
           enrichedBusinesses.push({ ...business, ...details });
         } catch (error) {
-          console.log(`⚠️ Error en detalles: ${error.message}`);
+          console.log(`⚠️ Error en detalles de ${business.nombre}: ${error.message}`);
+          // Continuar con el negocio básico sin detalles
           enrichedBusinesses.push(business);
         }
       } else {
@@ -519,7 +479,12 @@ class GoogleMapsScraper {
         );
       }
 
-      await this.page.waitForTimeout(1000);
+      // Pequeña pausa entre negocios
+      try {
+        await this.page.waitForTimeout(1000);
+      } catch (error) {
+        console.log(`⚠️ Error en pausa: ${error.message}`);
+      }
     }
 
     if (this.progressCallback) {
@@ -631,7 +596,7 @@ class GoogleMapsScraper {
               const href = linkElement.getAttribute('href');
               if (href) {
                 data.url = href.startsWith('http') ? href : 'https://www.google.com' + href;
-                
+
                 // Extraer coordenadas de la URL
                 const coordMatch = href.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
                 if (coordMatch) {
@@ -710,19 +675,26 @@ class GoogleMapsScraper {
   async getBusinessDetailsComplete(businessUrl) {
     try {
       console.log(`🔗 Navegando a: ${businessUrl}`);
-      await this.page.goto(businessUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-      await this.page.waitForTimeout(4000);
+      await this.page.goto(businessUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 30000 // Reducido de 60s a 30s
+      });
+      await this.page.waitForTimeout(3000); // Reducido de 4s a 3s
 
       // Hacer scroll en la página de detalles para cargar todo el contenido
-      await this.page.evaluate(() => {
-        window.scrollBy(0, 500);
-      });
-      await this.page.waitForTimeout(1500);
+      try {
+        await this.page.evaluate(() => {
+          window.scrollBy(0, 500);
+        });
+        await this.page.waitForTimeout(1000); // Reducido de 1.5s a 1s
 
-      await this.page.evaluate(() => {
-        window.scrollBy(0, -500);
-      });
-      await this.page.waitForTimeout(1500);
+        await this.page.evaluate(() => {
+          window.scrollBy(0, -500);
+        });
+        await this.page.waitForTimeout(1000); // Reducido de 1.5s a 1s
+      } catch (scrollError) {
+        console.log(`⚠️ Error en scroll: ${scrollError.message}`);
+      }
 
       // Intentar hacer click en botón "Mostrar teléfono" ANTES de evaluar
       try {
@@ -777,17 +749,17 @@ class GoogleMapsScraper {
             const elements = document.querySelectorAll(selector);
             for (const elem of elements) {
               const phoneText = elem.getAttribute('aria-label') ||
-                               elem.getAttribute('data-tooltip') ||
-                               elem.getAttribute('title') ||
-                               elem.textContent ||
-                               '';
+                elem.getAttribute('data-tooltip') ||
+                elem.getAttribute('title') ||
+                elem.textContent ||
+                '';
 
               // Limpiar y extraer número
               const cleanText = phoneText.replace(/Teléfono:?/gi, '')
-                                        .replace(/Phone:?/gi, '')
-                                        .replace(/Llamar/gi, '')
-                                        .replace(/Call/gi, '')
-                                        .trim();
+                .replace(/Phone:?/gi, '')
+                .replace(/Llamar/gi, '')
+                .replace(/Call/gi, '')
+                .trim();
 
               // Buscar patrón de teléfono en el texto limpio
               const phoneMatch = cleanText.match(/(\+?51[\s-]?)?[9(]?\d{2,3}[\s-]?\d{3}[\s-]?\d{3,4}/);
@@ -981,9 +953,9 @@ class GoogleMapsScraper {
           const allElements = document.querySelectorAll('[data-phone], [data-tel], [data-telefono], [data-contact]');
           for (const elem of allElements) {
             const phoneData = elem.getAttribute('data-phone') ||
-                             elem.getAttribute('data-tel') ||
-                             elem.getAttribute('data-telefono') ||
-                             elem.getAttribute('data-contact') || '';
+              elem.getAttribute('data-tel') ||
+              elem.getAttribute('data-telefono') ||
+              elem.getAttribute('data-contact') || '';
             if (phoneData && phoneData.match(/\d{8,}/)) {
               data.telefono = phoneData.trim();
               data.whatsapp = data.telefono;
@@ -1283,8 +1255,8 @@ class GoogleMapsScraper {
           const emailElements = document.querySelectorAll('[data-email], [data-mail], [data-contact-email]');
           for (const elem of emailElements) {
             const emailData = elem.getAttribute('data-email') ||
-                             elem.getAttribute('data-mail') ||
-                             elem.getAttribute('data-contact-email');
+              elem.getAttribute('data-mail') ||
+              elem.getAttribute('data-contact-email');
             if (emailData && emailData.includes('@')) {
               data.email = emailData.toLowerCase();
               break;
@@ -1350,9 +1322,9 @@ class GoogleMapsScraper {
             const corporateEmails = validEmails.filter(email => {
               const emailLower = email.toLowerCase();
               return !emailLower.includes('gmail.') &&
-                     !emailLower.includes('hotmail.') &&
-                     !emailLower.includes('outlook.') &&
-                     !emailLower.includes('yahoo.');
+                !emailLower.includes('hotmail.') &&
+                !emailLower.includes('outlook.') &&
+                !emailLower.includes('yahoo.');
             });
 
             // Usar email corporativo si existe, sino usar cualquier válido
@@ -1407,7 +1379,7 @@ class GoogleMapsScraper {
 
         // Descripción del negocio
         const descSection = document.querySelector('[class*="description"]') ||
-                           document.querySelector('[aria-label*="Descripción"]');
+          document.querySelector('[aria-label*="Descripción"]');
         if (descSection) {
           data.descripcion = descSection.textContent.trim().substring(0, 200);
         }
@@ -1465,8 +1437,33 @@ class GoogleMapsScraper {
 
   async close() {
     if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
+      try {
+        console.log('🔒 Cerrando navegador...');
+        // Cerrar páginas primero
+        const pages = await this.browser.pages();
+        for (const page of pages) {
+          try {
+            await page.close();
+          } catch (error) {
+            console.log(`⚠️ Error cerrando página: ${error.message}`);
+          }
+        }
+
+        // Luego cerrar el navegador
+        await this.browser.close();
+        console.log('✅ Navegador cerrado correctamente');
+      } catch (error) {
+        console.log(`⚠️ Error al cerrar navegador: ${error.message}`);
+        // Intentar matar el proceso si el cierre normal falla
+        try {
+          await this.browser.process().kill('SIGKILL');
+        } catch (killError) {
+          console.log(`⚠️ No se pudo forzar cierre: ${killError.message}`);
+        }
+      } finally {
+        this.browser = null;
+        this.page = null;
+      }
     }
   }
 }

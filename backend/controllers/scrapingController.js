@@ -59,7 +59,7 @@ exports.searchBusinesses = async (req, res) => {
 
     // Crear ID único para el trabajo
     const jobId = Date.now().toString();
-    
+
     // Inicializar estado del trabajo
     jobs[jobId] = {
       status: 'iniciando',
@@ -157,21 +157,38 @@ exports.searchBusinesses = async (req, res) => {
   }
 };
 
-exports.getStatus = (req, res) => {
+exports.getStatus = async (req, res) => {
   try {
     const { jobId } = req.params;
 
-    if (!jobs[jobId]) {
-      return res.status(404).json({
-        success: false,
-        message: 'Trabajo no encontrado'
+    // Primero buscar en memoria
+    if (jobs[jobId]) {
+      return res.json({
+        success: true,
+        job: jobs[jobId]
       });
     }
 
-    res.json({
-      success: true,
-      job: jobs[jobId]
-    });
+    // Si no está en memoria, buscar en archivos guardados
+    try {
+      const filePath = path.join(DATA_DIR, `${jobId}.json`);
+      const data = await fs.readFile(filePath, 'utf8');
+      const savedJob = JSON.parse(data);
+
+      // Restaurar a memoria para futuras consultas
+      jobs[jobId] = savedJob;
+
+      return res.json({
+        success: true,
+        job: savedJob
+      });
+    } catch (fileError) {
+      // No existe ni en memoria ni en archivo
+      return res.status(404).json({
+        success: false,
+        message: 'Trabajo no encontrado. Es posible que haya expirado o el servidor se haya reiniciado.'
+      });
+    }
 
   } catch (error) {
     console.error('Error en getStatus:', error);
@@ -215,33 +232,33 @@ exports.getLastResult = async (req, res) => {
 // Función para calcular prioridad del lead según especificaciones
 function calculatePriority(business) {
   const { web, tieneWeb, estadoWeb, resenas, calificacion, facebook, instagram } = business;
-  
+
   // Premium: No tiene web + tiene redes sociales activas + más de 50 reseñas
   const tieneRedes = facebook || instagram;
   if ((tieneWeb === 'No' || !web) && tieneRedes && resenas > 50) {
     return 'Premium';
   }
-  
+
   // Alto: Tiene web desactualizada o problemas técnicos + buenas reseñas
   if ((estadoWeb === 'Inactiva' || estadoWeb === 'No responde') && resenas > 20) {
     return 'Alto';
   }
-  
+
   // Alto: No tiene web pero tiene más de 20 reseñas
   if ((tieneWeb === 'No' || !web) && resenas > 20) {
     return 'Alto';
   }
-  
+
   // Medio: Tiene web básica pero sin optimización SEO (asumimos si tiene web pero pocas reseñas)
   if (web && resenas >= 10 && resenas < 50) {
     return 'Medio';
   }
-  
+
   // Bajo: Tiene web moderna y optimizada (más de 50 reseñas y web activa)
   if (web && estadoWeb === 'Activa' && resenas > 50) {
     return 'Bajo';
   }
-  
+
   // Por defecto
   return resenas > 15 ? 'Medio' : 'Bajo';
 }
@@ -250,7 +267,7 @@ function calculatePriority(business) {
 function suggestServices(business) {
   const services = [];
   const { web, tieneWeb, estadoWeb, resenas, categoria, facebook, instagram, tiktok, linkedin } = business;
-  
+
   const tieneRedes = facebook || instagram || tiktok || linkedin;
   const esGrande = resenas > 50;
   const esTienda = categoria && (
@@ -259,7 +276,7 @@ function suggestServices(business) {
     categoria.toLowerCase().includes('boutique') ||
     categoria.toLowerCase().includes('shop')
   );
-  
+
   // Desarrollo Web (si no tiene web o web deficiente)
   if (tieneWeb === 'No' || !web) {
     services.push('Desarrollo Web');
@@ -267,12 +284,12 @@ function suggestServices(business) {
   if (estadoWeb === 'Inactiva' || estadoWeb === 'No responde') {
     services.push('Desarrollo Web (Renovación)');
   }
-  
+
   // E-commerce (si es tienda sin venta online)
   if (esTienda && !web) {
     services.push('E-commerce');
   }
-  
+
   // SEO (si tiene web pero no aparece en búsquedas o tiene pocas reseñas online)
   if (web && resenas < 20) {
     services.push('SEO');
@@ -280,36 +297,36 @@ function suggestServices(business) {
   if (tieneWeb === 'No' && resenas > 10) {
     services.push('SEO');
   }
-  
+
   // Google Ads (si tiene presupuesto aparente - muchas reseñas)
   if (resenas > 30) {
     services.push('Google Ads');
   }
-  
+
   // Redes Sociales (si no tiene presencia)
   if (!tieneRedes) {
     services.push('Gestión de Redes Sociales');
   }
-  
+
   // Branding (si no tiene identidad visual clara - sin web ni redes)
   if (!web && !tieneRedes) {
     services.push('Branding');
   }
-  
+
   // Chatbot WhatsApp (si tiene muchas consultas - muchas reseñas)
   if (resenas > 40) {
     services.push('Chatbot WhatsApp');
   }
-  
+
   // Asistente Virtual (si es negocio grande)
   if (esGrande) {
     services.push('Asistente Virtual');
   }
-  
+
   // Si no hay servicios sugeridos, ofrecer consultoría
   if (services.length === 0) {
     services.push('Consultoría Digital');
   }
-  
+
   return services.join(', ');
 }

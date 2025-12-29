@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm start)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(set DANGEROUSLY_DISABLE_HOST_CHECK=true)",
+      "Bash(timeout /t 15)",
+      "Bash(ping:*)",
+      "Bash(more:*)",
+      "Bash(taskkill:*)"
+    ]
+  }
+}

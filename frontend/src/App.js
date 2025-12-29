@@ -7,7 +7,7 @@ function App() {
   const [progress, setProgress] = useState(0);
   const [jobId, setJobId] = useState(null);
   const [message, setMessage] = useState(null);
-  
+
   // Configuración de búsqueda automática
   const [autoSearch, setAutoSearch] = useState(false);
   const [scheduleTime, setScheduleTime] = useState('');
@@ -51,10 +51,83 @@ function App() {
   useEffect(() => {
     if (!jobId) return;
 
+    let errorCount = 0;
+    const maxErrors = 5; // Máximo de errores consecutivos antes de detener
+
     const interval = setInterval(async () => {
       try {
         const response = await fetch(`/api/scraping/status/${jobId}`);
-        const data = await response.json();
+
+        // Si el job no existe (404), detener polling
+        if (response.status === 404) {
+          console.log('Job no encontrado, deteniendo polling');
+          setLoading(false);
+          setJobId(null);
+          // Intentar cargar el último resultado disponible
+          const lastResponse = await fetch('/api/scraping/last');
+          const lastData = await lastResponse.json();
+          if (lastData.success && lastData.hasData && lastData.job && lastData.job.businesses) {
+            setBusinesses(lastData.job.businesses);
+            showMessage('info', `Cargados ${lastData.job.businesses.length} negocios del último resultado guardado`);
+          }
+          return;
+        }
+
+        // Si hay error del servidor (500), incrementar contador pero continuar
+        if (response.status === 500 || !response.ok) {
+          errorCount++;
+          console.log(`Error del servidor (${response.status}), intento ${errorCount}/${maxErrors}`);
+
+          // Intentar obtener el mensaje de error del servidor
+          try {
+            const errorText = await response.text();
+            console.log('Respuesta del servidor:', errorText.substring(0, 200));
+
+            // Intentar parsear como JSON
+            try {
+              const errorData = JSON.parse(errorText);
+              if (errorCount >= maxErrors) {
+                setLoading(false);
+                setJobId(null);
+                showMessage('error', `Error del servidor: ${errorData.message || 'Error desconocido'}`);
+              }
+            } catch {
+              // No es JSON válido, mostrar mensaje genérico
+              if (errorCount >= maxErrors) {
+                setLoading(false);
+                setJobId(null);
+                showMessage('error', 'El servidor está teniendo problemas. Por favor, reinicia el servidor backend.');
+              }
+            }
+          } catch {
+            if (errorCount >= maxErrors) {
+              setLoading(false);
+              setJobId(null);
+              showMessage('error', 'Error de conexión con el servidor.');
+            }
+          }
+          return;
+        }
+
+        // Intentar parsear JSON de forma segura
+        let data;
+        try {
+          const text = await response.text();
+          data = JSON.parse(text);
+        } catch (parseError) {
+          errorCount++;
+          console.error('Error parseando respuesta:', parseError.message);
+          console.log(`Intento ${errorCount}/${maxErrors}`);
+          if (errorCount >= maxErrors) {
+            setLoading(false);
+            setJobId(null);
+            showMessage('error', 'El servidor está devolviendo respuestas inválidas. Por favor, reinicia el servidor backend.');
+          }
+          return;
+        }
+
+        // Reset error counter on success
+        errorCount = 0;
 
         if (data.success && data.job) {
           setProgress(data.job.progress || 0);
@@ -77,9 +150,15 @@ function App() {
           }
         }
       } catch (error) {
-        console.error('Error al obtener estado:', error);
+        errorCount++;
+        console.log(`Error de red, intento ${errorCount}/${maxErrors}:`, error.message);
+        if (errorCount >= maxErrors) {
+          setLoading(false);
+          setJobId(null);
+          showMessage('error', 'Error de conexión. Por favor, verifica que el servidor esté funcionando.');
+        }
       }
-    }, 1500); // Actualizar cada 1.5 segundos para tiempo más real
+    }, 2000); // Aumentar a 2 segundos para reducir carga
 
     return () => clearInterval(interval);
   }, [jobId]);
