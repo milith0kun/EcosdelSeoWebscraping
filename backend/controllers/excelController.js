@@ -111,18 +111,16 @@ exports.exportToExcel = async (req, res) => {
     ws3['!cols'] = [{ wch: 80 }];
     XLSX.utils.book_append_sheet(workbook, ws3, 'Guía de Uso');
 
-    // Guardar archivo
-    XLSX.writeFile(workbook, filepath);
+    // Generar buffer del archivo en memoria (no guardarlo en disco)
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 
-    console.log(`📊 Excel generado: ${filename}`);
+    console.log(`📊 Excel generado: ${filename} (${businesses.length} negocios)`);
 
-    res.json({
-      success: true,
-      message: 'Excel generado exitosamente',
-      filename,
-      downloadUrl: `/exports/${filename}`,
-      totalBusinesses: businesses.length
-    });
+    // Enviar archivo directamente al navegador para descarga
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
 
   } catch (error) {
     console.error('Error en exportToExcel:', error);

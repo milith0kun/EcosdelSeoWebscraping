@@ -13,6 +13,40 @@ function App() {
   const [scheduleTime, setScheduleTime] = useState('');
   const [scheduleEmail, setScheduleEmail] = useState('');
 
+  const [statusMessage, setStatusMessage] = useState('');
+
+  // Cargar último resultado al montar el componente
+  useEffect(() => {
+    const loadLastResult = async () => {
+      try {
+        const response = await fetch('/api/scraping/last');
+        const data = await response.json();
+
+        if (data.success && data.hasData && data.job) {
+          const job = data.job;
+
+          // Cargar datos si la búsqueda está completada
+          if (job.status === 'completado' && job.businesses) {
+            setBusinesses(job.businesses);
+            setCiudad(job.ciudad || '');
+            showMessage('success', `✅ Última búsqueda completada: ${job.businesses.length} negocios en ${job.ciudad}`);
+          }
+          // Cargar datos parciales si la búsqueda está en progreso
+          else if (job.status === 'buscando' && job.businesses && job.businesses.length > 0) {
+            setBusinesses(job.businesses);
+            setCiudad(job.ciudad || '');
+            setProgress(job.progress || 0);
+            showMessage('info', `🔄 Búsqueda en progreso: ${job.businesses.length} negocios encontrados en ${job.ciudad}. Puedes cerrar esta página, el proceso continúa.`);
+          }
+        }
+      } catch (error) {
+        console.error('Error cargando último resultado:', error);
+      }
+    };
+
+    loadLastResult();
+  }, []);
+
   // Polling para obtener el estado del trabajo
   useEffect(() => {
     if (!jobId) return;
@@ -24,6 +58,12 @@ function App() {
 
         if (data.success && data.job) {
           setProgress(data.job.progress || 0);
+          setStatusMessage(data.job.statusMessage || 'Procesando...');
+
+          // Actualizar negocios en tiempo real si están disponibles
+          if (data.job.businesses && data.job.businesses.length > 0) {
+            setBusinesses(data.job.businesses);
+          }
 
           if (data.job.status === 'completado') {
             setBusinesses(data.job.businesses);
@@ -39,7 +79,7 @@ function App() {
       } catch (error) {
         console.error('Error al obtener estado:', error);
       }
-    }, 2000);
+    }, 1500); // Actualizar cada 1.5 segundos para tiempo más real
 
     return () => clearInterval(interval);
   }, [jobId]);
@@ -91,21 +131,45 @@ function App() {
     }
 
     try {
+      showMessage('info', 'Generando Excel...');
+
       const response = await fetch('/api/excel/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ businesses, ciudad })
       });
 
-      const data = await response.json();
-
-      if (data.success) {
-        // Descargar el archivo
-        window.open(data.downloadUrl, '_blank');
-        showMessage('success', 'Excel descargado exitosamente');
-      } else {
-        showMessage('error', data.message || 'Error al exportar');
+      if (!response.ok) {
+        throw new Error('Error al generar Excel');
       }
+
+      // Obtener el archivo como blob
+      const blob = await response.blob();
+
+      // Extraer nombre del archivo del header Content-Disposition
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `Prospeccion_${ciudad}_${Date.now()}.xlsx`;
+
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      // Crear link temporal para descargar
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+
+      // Limpiar
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      showMessage('success', `Excel descargado: ${filename}`);
     } catch (error) {
       showMessage('error', 'Error al exportar a Excel');
       console.error('Error:', error);
@@ -228,6 +292,14 @@ function App() {
           <div className="progress-section">
             <div className="progress-info">
               <h3>Buscando negocios en {ciudad}...</h3>
+              <p style={{ fontSize: '14px', color: '#666', marginTop: '8px' }}>
+                {statusMessage || 'Iniciando búsqueda...'}
+              </p>
+              {businesses.length > 0 && (
+                <p style={{ fontSize: '16px', color: '#28a745', fontWeight: 'bold', marginTop: '12px' }}>
+                  ✅ {businesses.length} negocios encontrados
+                </p>
+              )}
             </div>
             <div className="progress-bar-container">
               <div className="progress-bar" style={{ width: `${progress}%` }}>
@@ -235,7 +307,12 @@ function App() {
               </div>
             </div>
             <div className="progress-details">
-              Este proceso puede tomar algunos minutos...
+              <p style={{ fontSize: '13px', color: '#555' }}>
+                💡 Puedes cerrar esta pestaña. El proceso continuará en segundo plano y los resultados se guardarán automáticamente.
+              </p>
+              <p style={{ fontSize: '13px', color: '#777' }}>
+                Este proceso puede tomar varios minutos. Se están buscando en múltiples categorías de negocios.
+              </p>
             </div>
           </div>
         )}

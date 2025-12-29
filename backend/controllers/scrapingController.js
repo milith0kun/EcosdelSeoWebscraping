@@ -1,7 +1,50 @@
 const GoogleMapsScraper = require('../services/scraper');
+const fs = require('fs').promises;
+const path = require('path');
 
 // Almacenamiento temporal de trabajos
 const jobs = {};
+
+// Directorio para guardar resultados
+const DATA_DIR = path.join(__dirname, '../data');
+
+// Función para guardar resultados en archivo
+async function saveResults(jobId, data) {
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    const filePath = path.join(DATA_DIR, `${jobId}.json`);
+    await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+    console.log(`💾 Resultados guardados: ${filePath}`);
+  } catch (error) {
+    console.error('Error guardando resultados:', error);
+  }
+}
+
+// Función para cargar último resultado
+async function loadLastResult() {
+  try {
+    const files = await fs.readdir(DATA_DIR);
+    if (files.length === 0) return null;
+
+    // Ordenar por fecha de modificación (más reciente primero)
+    const fileStats = await Promise.all(
+      files.map(async (file) => {
+        const filePath = path.join(DATA_DIR, file);
+        const stats = await fs.stat(filePath);
+        return { file, mtime: stats.mtime };
+      })
+    );
+
+    fileStats.sort((a, b) => b.mtime - a.mtime);
+    const lastFile = fileStats[0].file;
+    const filePath = path.join(DATA_DIR, lastFile);
+    const data = await fs.readFile(filePath, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error('Error cargando último resultado:', error);
+    return null;
+  }
+}
 
 exports.searchBusinesses = async (req, res) => {
   try {
@@ -31,27 +74,58 @@ exports.searchBusinesses = async (req, res) => {
     // Ejecutar scraping en segundo plano
     (async () => {
       const scraper = new GoogleMapsScraper();
-      
+
       try {
         jobs[jobId].status = 'buscando';
         console.log(`🔍 Iniciando búsqueda en ${ciudad}...`);
 
-        const businesses = await scraper.searchBusinesses(ciudad);
-        
+        // Guardar estado inicial
+        await saveResults(jobId, jobs[jobId]);
+
+        // Callback de progreso en tiempo real con guardado automático
+        let lastSavedCount = 0;
+        const progressCallback = async (progress, message, currentCount = 0, partialBusinesses = []) => {
+          jobs[jobId].progress = progress;
+          jobs[jobId].statusMessage = message;
+          jobs[jobId].currentCount = currentCount;
+
+          // Actualizar negocios parciales en tiempo real
+          if (partialBusinesses && partialBusinesses.length > 0) {
+            jobs[jobId].businesses = partialBusinesses;
+            jobs[jobId].total = partialBusinesses.length;
+
+            // Guardar progreso cada 20 negocios nuevos
+            if (partialBusinesses.length - lastSavedCount >= 20) {
+              await saveResults(jobId, jobs[jobId]);
+              lastSavedCount = partialBusinesses.length;
+              console.log(`💾 Progreso guardado: ${partialBusinesses.length} negocios`);
+            }
+          }
+
+          console.log(`📊 ${progress}% - ${message} (${currentCount} negocios)`);
+        };
+
+        const businesses = await scraper.searchBusinesses(ciudad, progressCallback);
+
         // Enriquecer datos con análisis de prioridad
         const enrichedBusinesses = businesses.map(business => ({
           ...business,
           ciudad,
           prioridad: calculatePriority(business),
           serviciosSugeridos: suggestServices(business),
-          estadoContacto: 'Pendiente'
+          estadoContacto: 'Pendiente',
+          fechaCaptura: new Date()
         }));
 
         jobs[jobId].businesses = enrichedBusinesses;
         jobs[jobId].total = enrichedBusinesses.length;
         jobs[jobId].progress = 100;
         jobs[jobId].status = 'completado';
+        jobs[jobId].statusMessage = `Completado: ${enrichedBusinesses.length} negocios encontrados`;
         jobs[jobId].endTime = new Date();
+
+        // Guardar resultados en archivo para persistencia
+        await saveResults(jobId, jobs[jobId]);
 
         console.log(`✅ Búsqueda completada: ${enrichedBusinesses.length} negocios encontrados`);
 
@@ -59,6 +133,7 @@ exports.searchBusinesses = async (req, res) => {
         console.error('❌ Error en scraping:', error);
         jobs[jobId].status = 'error';
         jobs[jobId].error = error.message;
+        jobs[jobId].statusMessage = `Error: ${error.message}`;
       } finally {
         await scraper.close();
       }
@@ -103,6 +178,35 @@ exports.getStatus = (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error al obtener estado',
+      error: error.message
+    });
+  }
+};
+
+// Nuevo endpoint para cargar el último resultado guardado
+exports.getLastResult = async (req, res) => {
+  try {
+    const lastResult = await loadLastResult();
+
+    if (!lastResult) {
+      return res.json({
+        success: true,
+        hasData: false,
+        message: 'No hay resultados previos'
+      });
+    }
+
+    res.json({
+      success: true,
+      hasData: true,
+      job: lastResult
+    });
+
+  } catch (error) {
+    console.error('Error en getLastResult:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al cargar último resultado',
       error: error.message
     });
   }

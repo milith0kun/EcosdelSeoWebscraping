@@ -37,9 +37,10 @@ app.get('/api/health', (req, res) => {
 });
 
 // Iniciar servidor
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
-  console.log(`📊 API disponible en http://localhost:${PORT}/api`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Servidor corriendo en http://0.0.0.0:${PORT}`);
+  console.log(`📊 API disponible en http://0.0.0.0:${PORT}/api`);
+  console.log(`🌐 Accesible desde: http://18.117.254.75:${PORT}/api`);
 });
 
 module.exports = app;
