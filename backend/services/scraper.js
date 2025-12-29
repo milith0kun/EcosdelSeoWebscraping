@@ -55,19 +55,120 @@ class GoogleMapsScraper {
 
       this.progressCallback = progressCallback;
 
-      // ESTRATEGIA OPTIMIZADA: Búsqueda por radio desde el centro de la ciudad
-      // En lugar de 213 categorías, usamos búsqueda genérica "negocios" en un radio
+      // ESTRATEGIA COMPLETA: Todas las categorías con restricción por RADIO
       const radioKm = 5; // Radio de búsqueda en kilómetros desde el centro
 
-      // Categorías principales (reducidas para eficiencia)
+      // Lista COMPLETA de categorías para captura exhaustiva
       const categorias = [
-        'restaurantes', 'cafeterías', 'bares', 'hoteles', 'tiendas',
-        'peluquerías', 'gimnasios', 'farmacias', 'talleres mecánicos',
-        'abogados', 'dentistas', 'clínicas', 'agencias de viajes',
-        'inmobiliarias', 'construcción', 'servicio técnico', 'fotografía',
-        'lavanderías', 'spas', 'academias', 'veterinarias', 'panaderías',
-        'ferreterías', 'ópticas', 'librerías', 'joyerías', 'florerías',
-        'negocios', 'empresas', 'comercios' // Búsquedas amplias
+        // Alimentos y bebidas
+        'restaurantes', 'cafeterías', 'bares', 'heladerías', 'panaderías', 'pastelerías',
+        'comida rápida', 'pizzerías', 'cevicherías', 'chifas', 'pollerías', 'parrillas',
+        'juguerías', 'chicherías', 'fuentes de soda', 'dulcerías', 'chocolaterías',
+
+        // Alojamiento y turismo
+        'hoteles', 'hostales', 'hospedajes', 'casas de huéspedes', 'albergues',
+        'agencias de viajes', 'tours', 'operadores turísticos', 'guías turísticos',
+
+        // Retail y comercios
+        'tiendas', 'boutiques', 'bazares', 'minimarkets', 'bodegas',
+        'farmacias', 'boticas', 'supermercados', 'hipermercados',
+        'ferreterías', 'librerías', 'papelerías', 'jugueterías',
+        'tiendas de ropa', 'tiendas de calzado', 'zapaterías', 'tiendas de deportes',
+        'joyerías', 'relojerías', 'ópticas', 'perfumerías', 'cosméticos',
+        'pet shops', 'veterinarias', 'tiendas de mascotas',
+        'florerías', 'viveros', 'tiendas de plantas',
+        'tiendas de electrodomésticos', 'tiendas de electrónica', 'tiendas de música',
+
+        // Servicios profesionales
+        'abogados', 'estudios jurídicos', 'notarías',
+        'contadores', 'estudios contables', 'asesoría tributaria',
+        'consultorías', 'asesorías empresariales',
+        'arquitectos', 'ingenieros', 'estudios de arquitectura',
+        'inmobiliarias', 'corredores de bienes raíces',
+
+        // Salud y bienestar
+        'clínicas', 'centros médicos', 'consultorios médicos',
+        'dentistas', 'odontólogos', 'ortodoncistas',
+        'laboratorios clínicos', 'laboratorios de análisis',
+        'ópticas', 'oftalmólogos',
+        'fisioterapia', 'terapia física', 'rehabilitación',
+        'psicólogos', 'psiquiatras',
+        'nutricionistas', 'dietistas',
+        'gimnasios', 'centros de fitness', 'crossfit',
+        'spas', 'centros de masajes', 'centros de estética',
+        'salones de belleza', 'peluquerías', 'barberías',
+        'manicure', 'pedicure', 'estética',
+
+        // Educación
+        'colegios', 'escuelas', 'institutos educativos',
+        'universidades', 'centros de educación superior',
+        'academias', 'centros de capacitación',
+        'centros de idiomas', 'institutos de inglés',
+        'guarderías', 'nidos', 'centros de cuidado infantil',
+        'academias de música', 'academias de danza', 'academias de arte',
+
+        // Automotriz
+        'talleres mecánicos', 'mecánica automotriz', 'mecánica en general',
+        'lavaderos de autos', 'car wash',
+        'repuestos automotrices', 'autopartes',
+        'lubricentros', 'cambio de aceite',
+        'llantas', 'venta de neumáticos',
+        'talleres de pintura automotriz', 'enderezado y pintura',
+        'talleres de electricidad automotriz',
+
+        // Construcción y hogar
+        'constructoras', 'empresas constructoras',
+        'maestros de obra', 'albañilería',
+        'cerrajería', 'cerrajeros',
+        'carpintería', 'ebanistería',
+        'electricistas', 'instalaciones eléctricas',
+        'gasfiteros', 'plomería', 'sanitarios',
+        'pintores', 'pintura en general',
+        'vidriería', 'cristalería',
+        'mueblería', 'tiendas de muebles',
+        'decoración', 'diseño de interiores',
+
+        // Tecnología
+        'servicio técnico', 'reparación de computadoras',
+        'reparación de celulares', 'reparación de smartphones',
+        'tiendas de computadoras', 'tiendas de laptops',
+        'internet café', 'cabinas de internet',
+        'impresoras', 'servicio de impresión',
+
+        // Entretenimiento y recreación
+        'cines', 'teatros',
+        'discotecas', 'clubs nocturnos',
+        'karaokes', 'peñas',
+        'centros recreacionales', 'parques de diversiones',
+        'salas de juegos', 'casinos', 'tragamonedas',
+
+        // Servicios financieros
+        'bancos', 'agencias bancarias',
+        'cajas municipales', 'cajas rurales',
+        'cooperativas', 'cooperativas de ahorro',
+        'casas de cambio', 'cambistas',
+        'financieras', 'créditos',
+
+        // Transporte y logística
+        'transporte', 'empresas de transporte',
+        'courier', 'mensajería',
+        'mudanzas', 'servicios de mudanza',
+        'taxi', 'servicios de taxi',
+        'agencias de carga', 'logística',
+
+        // Otros servicios importantes
+        'lavanderías', 'lavado en seco',
+        'tintorerías', 'tintorería y lavandería',
+        'imprentas', 'copias e impresiones',
+        'fotografía', 'estudios fotográficos',
+        'eventos', 'organización de eventos',
+        'catering', 'banquetes',
+        'funerarias', 'servicios funerarios',
+        'seguros', 'corredores de seguros',
+
+        // Búsquedas genéricas amplias
+        'negocios', 'empresas', 'comercios', 'locales comerciales',
+        'servicios profesionales', 'oficinas', 'emprendimientos'
       ];
 
       let allBusinesses = [];
